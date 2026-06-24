@@ -1,0 +1,43 @@
+# ── Python ──────────────────────────────────────────────
+# Virtual environment (can always be recreated with pip install -r requirements.txt)
+venv/
+.venv/
+env/
+
+# Python bytecode (auto-generated, not source code)
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# ── Secrets (NEVER commit these) ────────────────────────
+# Your API keys, DB passwords, etc. live here locally
+.env
+.env.local
+.env.*.local
+
+# ── Local databases (environment-specific, too large) ───
+# ChromaDB stores vector embeddings on local disk
+chroma_data/
+
+# ── Node / Frontend tooling ─────────────────────────────
+# Dependencies managed by npm — always recreatable
+node_modules/
+npm-debug.log*
+
+# ── macOS system files ──────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── Editor/IDE files ────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Build outputs ───────────────────────────────────────
+dist/
+build/
+.next/

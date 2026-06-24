@@ -1,0 +1,1177 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>The World Dispatch v1.1</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=EB+Garamond:ital,wght@0,400;0,500;0,700;1,400;1,700&display=swap"
+        rel="stylesheet">
+    <!-- MediaPipe Vision (for hand gesture control) -->
+    <script type="module">
+        import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+        window.MediaPipeVision = { HandLandmarker, FilesetResolver };
+    </script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0d0900;
+        }
+
+        /* ── SCENE with perspective for 3D tilt ── */
+        #vp {
+            position: fixed;
+            inset: 0;
+            perspective: 1600px;
+            perspective-origin: 50% 48%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: radial-gradient(ellipse at 50% 42%, #3a2514 0%, #080400 100%);
+        }
+
+        /* ── STAGE: interaction layer synchronized with Three.js ── */
+        #stage {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            width: 780px;
+            height: 970px;
+            transform-origin: 50% 50%;
+            will-change: transform;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* ── SPREADS ── */
+        .spread {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .spread.active {
+            opacity: 1;
+            pointer-events: none; /* Pointer events handled by .interact */
+        }
+
+        .interact {
+            position: absolute;
+            inset: 0;
+            pointer-events: auto;
+        }
+
+        /* ── PAGE ── */
+        .page {
+            width: 780px;
+            height: 970px;
+            background: #f3ecd9;
+            padding: 16px 22px 14px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            background-image:
+                repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(160, 138, 90, .09) 27px, rgba(160, 138, 90, .09) 28px),
+                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='.04'/%3E%3C/svg%3E");
+        }
+
+        /* Inner shadow for paper depth */
+        .page::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            box-shadow: inset 0 0 50px rgba(70, 45, 10, .1), inset 5px 0 15px rgba(0, 0, 0, .05), inset -5px 0 15px rgba(0, 0, 0, .05);
+            z-index: 10;
+        }
+
+        /* ── PAGE HEADER ── */
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            font-size: 7.5px;
+            font-family: 'Libre Baskerville', serif;
+            color: #1a0f04;
+            border-top: 2.5px double #1a0f04;
+            border-bottom: 1px solid #1a0f04;
+            padding: 2px 0;
+            margin-bottom: 4px;
+            letter-spacing: .03em;
+            flex-shrink: 0;
+        }
+
+        .mast {
+            font-family: 'UnifrakturMaguntia', cursive;
+            font-size: 50px;
+            line-height: 1;
+            color: #1a0f04;
+            text-align: center;
+        }
+
+        .mast-sub {
+            font-family: 'Libre Baskerville', serif;
+            font-style: italic;
+            font-size: 7.5px;
+            letter-spacing: .16em;
+            text-transform: uppercase;
+            text-align: center;
+            color: #1a0f04;
+            margin: 1px 0 4px;
+        }
+
+        .pg-title {
+            font-family: 'UnifrakturMaguntia', cursive;
+            font-size: 30px;
+            color: #1a0f04;
+            text-align: center;
+            padding-bottom: 6px;
+            border-bottom: 2px solid #1a0f04;
+            margin-bottom: 7px;
+        }
+
+        .pg-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 7.5px;
+            font-family: 'Libre Baskerville', serif;
+            color: #666;
+            border-bottom: 2px solid #1a0f04;
+            padding-bottom: 5px;
+            margin-bottom: 7px;
+        }
+
+        .hrd {
+            border: none;
+            border-top: 3px double #1a0f04;
+            margin: 5px 0;
+            flex-shrink: 0;
+        }
+
+        .hr {
+            border: none;
+            border-top: 1px solid #1a0f04;
+            margin: 5px 0;
+        }
+
+        .ticker {
+            background: #1a0f04;
+            color: #f3ecd9;
+            overflow: hidden;
+            font-family: 'Libre Baskerville', serif;
+            font-size: 7.5px;
+            letter-spacing: .16em;
+            text-transform: uppercase;
+            padding: 3px 0;
+            margin: 4px 0;
+            white-space: nowrap;
+            flex-shrink: 0;
+            text-align: center;
+        }
+
+        .ticker span {
+            display: inline-block;
+        }
+
+        /* ── COLUMN LAYOUT ── */
+        .cols {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            border-top: 1px solid #1a0f04;
+            margin-top: 5px;
+        }
+
+        .col {
+            flex: 1;
+            padding: 6px 11px 0;
+            border-right: 1px solid #1a0f04;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .col:first-child {
+            padding-left: 2px;
+        }
+
+        .col:last-child {
+            border-right: none;
+            padding-right: 2px;
+        }
+
+        .col.w2 {
+            flex: 2;
+        }
+
+        /* ── TYPOGRAPHY ── */
+        .sl {
+            display: inline-block;
+            font-size: 7.5px;
+            font-family: 'Libre Baskerville', serif;
+            text-transform: uppercase;
+            letter-spacing: .2em;
+            color: #8b0000;
+            font-weight: 700;
+            border-bottom: 1px solid #8b0000;
+            margin-bottom: 3px;
+        }
+
+        .hl {
+            font-family: 'Playfair Display', serif;
+            font-weight: 900;
+            line-height: 1.1;
+            color: #1a0f04;
+            margin-bottom: 3px;
+        }
+
+        .hl.xl {
+            font-size: 22px;
+        }
+
+        .hl.lg {
+            font-size: 16px;
+        }
+
+        .hl.md {
+            font-size: 13px;
+        }
+
+        .hl.sm {
+            font-size: 11px;
+        }
+
+        .was {
+            font-size: 7.8px;
+            font-style: italic;
+            color: #666;
+            margin-bottom: 3px;
+        }
+
+        .bt {
+            font-family: 'EB Garamond', serif !important;
+            font-size: 11.5px !important;
+            line-height: 1.4 !important;
+            color: #291800;
+            text-align: justify;
+        }
+
+        .bt p {
+            margin-bottom: 4px;
+        }
+
+
+
+        .dropcap {
+            font-family: 'UnifrakturMaguntia', cursive !important;
+            font-size: 3.5em !important;
+            float: left;
+            line-height: 0.8 !important;
+            margin: 0.05em 0.08em 0 0 !important;
+            color: #1a0f04;
+            text-transform: uppercase !important;
+        }
+
+        /* ── ARTICLE ZONES ── */
+        .az {
+            cursor: crosshair;
+            position: relative;
+            padding: 4px 3px;
+            border-radius: 2px;
+            transition: background .15s;
+            margin-bottom: 4px;
+        }
+
+        .az:hover {
+            background: rgba(110, 80, 30, .08);
+        }
+
+        .az::after {
+            content: '⊕';
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            font-size: 11px;
+            color: #8b0000;
+            opacity: 0;
+            transition: opacity .2s;
+        }
+
+        .az:hover::after {
+            opacity: .55;
+        }
+
+        /* ── ANIMATED PHOTO ── */
+        .mp {
+            position: relative;
+            overflow: hidden;
+            border: 1.5px solid #1a0f04;
+            margin: 5px 0;
+        }
+
+        .mp img {
+            width: 100%;
+            display: block;
+            object-fit: cover;
+            filter: grayscale(100%) contrast(1.1) sepia(18%);
+            animation: px 12s ease-in-out infinite alternate;
+        }
+
+        @keyframes px {
+            0% {
+                transform: scale(1.04) translate(0, 0);
+                filter: grayscale(100%) contrast(1.10) sepia(18%);
+            }
+
+            33% {
+                transform: scale(1.07) translate(-4px, -2px);
+                filter: grayscale(88%) contrast(1.16) sepia(11%);
+            }
+
+            66% {
+                transform: scale(1.05) translate(3px, -3px);
+                filter: grayscale(96%) contrast(1.08) sepia(22%);
+            }
+
+            100% {
+                transform: scale(1.06) translate(4px, 2px);
+                filter: grayscale(85%) contrast(1.18) sepia(11%);
+            }
+        }
+
+        .mp::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(ellipse 70% 60% at 55% 45%, transparent 50%, rgba(15, 8, 0, .28) 100%);
+            animation: vf 4s ease-in-out infinite alternate;
+        }
+
+        @keyframes vf {
+            0% {
+                opacity: .65
+            }
+
+            50% {
+                opacity: .3
+            }
+
+            100% {
+                opacity: .8
+            }
+        }
+
+        .pc {
+            font-size: 7.5px;
+            font-style: italic;
+            text-align: center;
+            color: #666;
+            margin-top: 2px;
+            line-height: 1.3;
+            flex-shrink: 0;
+        }
+
+        /* ── AD & HOROSCOPE ── */
+        .ad {
+            border: 2px solid #1a0f04;
+            padding: 7px;
+            text-align: center;
+            background: rgba(210, 195, 160, .25);
+            margin: 5px 0;
+        }
+
+        .ad .at {
+            font-family: 'UnifrakturMaguntia', cursive;
+            font-size: 17px;
+            color: #1a0f04;
+            display: block;
+            margin-bottom: 1px;
+        }
+
+        .ad p {
+            font-family: 'Libre Baskerville', serif;
+            font-style: italic;
+            font-size: 8px;
+            color: #1a0f04;
+        }
+
+        .hgrid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+            margin-top: 4px;
+        }
+
+        .hi {
+            border: 1px solid #1a0f04;
+            padding: 4px 5px;
+        }
+
+        .hs {
+            font-family: 'Playfair Display', serif;
+            font-weight: 700;
+            font-size: 9px;
+            color: #1a0f04;
+        }
+
+        .ht {
+            font-size: 8px;
+            font-family: 'Libre Baskerville', serif;
+            line-height: 1.4;
+            color: #291600;
+            margin-top: 1px;
+        }
+
+        /* ── PAGE NUMBER ── */
+        .pgnum {
+            display: flex;
+            justify-content: space-between;
+            font-size: 7.5px;
+            font-family: 'Libre Baskerville', serif;
+            color: #888;
+            border-top: 1px solid #1a0f04;
+            margin-top: auto;
+            padding-top: 3px;
+            flex-shrink: 0;
+        }
+
+        /* ── VIGNETTE (zoom mode) ── */
+        #vig {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            pointer-events: none;
+            opacity: 0;
+            background: radial-gradient(ellipse 55% 52% at 50% 50%, transparent 30%, rgba(4, 1, 0, .88) 100%);
+            transition: opacity .7s;
+        }
+
+        #vig.on {
+            opacity: 1;
+        }
+
+        /* ── ZOOM BACK ── */
+        #zb {
+            position: fixed;
+            top: 18px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10, 5, 0, .92);
+            color: #f3ecd9;
+            padding: 7px 22px;
+            font-family: 'Libre Baskerville', serif;
+            font-size: 10px;
+            letter-spacing: .1em;
+            cursor: pointer;
+            z-index: 500;
+            border: 1px solid rgba(243, 236, 217, .3);
+            border-radius: 2px;
+            display: none;
+            transition: background .2s;
+        }
+
+        #zb:hover {
+            background: rgba(10, 5, 0, 1);
+        }
+
+        /* ── CORNER TURN TABS ── */
+        #cn,
+        #cp {
+            position: fixed;
+            bottom: 22px;
+            z-index: 200;
+            cursor: pointer;
+            width: 72px;
+            height: 72px;
+        }
+
+        #cn {
+            right: 22px;
+        }
+
+        #cp {
+            left: 22px;
+            display: none;
+        }
+
+        #cn::before,
+        #cp::before {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            border-style: solid;
+            transition: all .3s;
+        }
+
+        #cn::before {
+            right: 0;
+            border-width: 0 0 58px 58px;
+            border-color: transparent transparent #c4b48a transparent;
+            filter: drop-shadow(-2px -2px 6px rgba(0, 0, 0, .45));
+        }
+
+        #cp::before {
+            left: 0;
+            border-width: 0 58px 58px 0;
+            border-color: transparent #c4b48a transparent transparent;
+            filter: drop-shadow(2px -2px 6px rgba(0, 0, 0, .45));
+        }
+
+        #cn:hover::before {
+            border-width: 0 0 72px 72px;
+            border-color: transparent transparent #a89060 transparent;
+        }
+
+        #cp:hover::before {
+            border-width: 0 72px 72px 0;
+            border-color: transparent #a89060 transparent transparent;
+        }
+
+        #cn::after {
+            content: '›';
+            position: absolute;
+            bottom: 8px;
+            right: 9px;
+            font-size: 18px;
+            color: #1a0f04;
+            opacity: .5;
+            font-family: 'Playfair Display', serif;
+        }
+
+        #cp::after {
+            content: '‹';
+            position: absolute;
+            bottom: 8px;
+            left: 9px;
+            font-size: 18px;
+            color: #1a0f04;
+            opacity: .5;
+            font-family: 'Playfair Display', serif;
+        }
+
+        /* ── PAGE DOTS ── */
+        #dots {
+            position: fixed;
+            bottom: 28px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 9px;
+            z-index: 200;
+        }
+
+        .dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, .2);
+            cursor: pointer;
+            transition: background .3s;
+        }
+
+        .dot.on {
+            background: #f3ecd9;
+        }
+
+        /* ── PAGE FLIP ── */
+        #flipper {
+            position: fixed;
+            z-index: 900;
+            pointer-events: none;
+            background: #f3ecd9;
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 27px, rgba(160, 138, 90, .09) 27px, rgba(160, 138, 90, .09) 28px);
+            display: none;
+            transform-origin: left center;
+        }
+
+        #flipper.go {
+            display: block;
+            animation: flip 1.2s cubic-bezier(.4, 0, .2, 1) forwards;
+        }
+
+        #flipper.rev {
+            display: block;
+            animation: fliprev 1.2s cubic-bezier(.4, 0, .2, 1) forwards;
+        }
+
+        @keyframes flip {
+            0% {
+                transform: rotateY(0deg);
+                box-shadow: 4px 0 30px rgba(0, 0, 0, .5);
+            }
+
+            45% {
+                transform: rotateY(-90deg);
+                box-shadow: 0 10px 50px rgba(0, 0, 0, .7);
+            }
+
+            100% {
+                transform: rotateY(-180deg);
+                box-shadow: none;
+            }
+        }
+
+        @keyframes fliprev {
+            0% {
+                transform: rotateY(-180deg);
+            }
+
+            55% {
+                transform: rotateY(-90deg);
+                box-shadow: 0 10px 50px rgba(0, 0, 0, .7);
+            }
+
+            100% {
+                transform: rotateY(0deg);
+                box-shadow: 4px 0 30px rgba(0, 0, 0, .5);
+            }
+        }
+
+        /* ── HINT ── */
+        #hint {
+            position: fixed;
+            bottom: 66px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(243, 236, 217, .38);
+            font-family: 'Libre Baskerville', serif;
+            font-style: italic;
+            font-size: 9.5px;
+            letter-spacing: .07em;
+            z-index: 200;
+            pointer-events: none;
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 1s;
+        }
+
+        /* ── MINIMIZE BUTTON (visible in expanded state) ── */
+        #mb {
+            position: fixed;
+            top: 18px;
+            left: 18px;
+            background: rgba(10, 5, 0, .85);
+            color: #f3ecd9;
+            padding: 6px 16px;
+            font-family: 'Libre Baskerville', serif;
+            font-size: 10px;
+            letter-spacing: .08em;
+            cursor: pointer;
+            z-index: 500;
+            border: 1px solid rgba(243, 236, 217, .25);
+            border-radius: 2px;
+            display: none;
+            transition: background .2s;
+        }
+
+        #mb:hover {
+            background: rgba(10, 5, 0, 1);
+        }
+
+        /* ── CURSOR STATES ── */
+        /* Float mode: whole newspaper is clickable */
+        body.float-mode #stage {
+            cursor: pointer;
+        }
+
+        body.float-mode .az {
+            cursor: pointer;
+        }
+
+        body.float-mode .az::after {
+            display: none;
+        }
+
+        /* Expanded mode: articles are crosshair targets */
+        body.expanded-mode #stage {
+            cursor: default;
+        }
+
+        body.expanded-mode .az {
+            cursor: crosshair;
+        }
+
+        /* ── FLAG WAVE: vertical strip system ── */
+        .wave-surface {
+            width: 780px;
+            height: 970px;
+            position: relative;
+            perspective: 1200px;
+            transform-style: preserve-3d;
+        }
+
+        .strip {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 780px;
+            height: 970px;
+            will-change: transform;
+            backface-visibility: hidden;
+            pointer-events: none;
+            /* strips are purely visual */
+        }
+
+        /* Interaction layer: sits on top, no clip-path, handles hover/click */
+        .interact {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 780px;
+            height: 970px;
+            z-index: 12;
+            background: transparent;
+        }
+
+        .interact .page {
+            background: transparent;
+            box-shadow: none;
+        }
+
+        .interact .page::before {
+            display: none;
+            /* no inner shadow on interaction layer */
+        }
+
+        /* Make all text/images in the interaction layer invisible */
+        .interact * {
+            color: transparent !important;
+            border-color: transparent !important;
+            background-color: transparent !important;
+            background-image: none !important;
+            box-shadow: none !important;
+            text-shadow: none !important;
+        }
+
+        /* But keep the hover highlight visible */
+        .interact .az {
+            position: relative;
+        }
+
+        .interact .az::after {
+            color: #8b0000 !important;
+        }
+
+        .interact .az:hover {
+            background: rgba(110, 80, 30, .10) !important;
+        }
+
+    </style>
+</head>
+
+<body>
+    <div id="vp"></div>
+    <div id="vig"></div>
+    <div id="cn"></div>
+    <div id="cp"></div>
+    <div id="dots"></div>
+    <div id="zb">✕ BACK TO FULL PAGE</div>
+    <div id="mb">↙ MINIMISE</div>
+    <div id="flipper"></div>
+    <p id="hint">Click the newspaper to open it</p>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Force browser to load the latest spreads layout -->
+    <script src="spreads.js?v=4"></script>
+    <script src="gestures.js"></script>
+    <script>
+        // ── API Configuration ────────────────────────────────────────────────────
+        // LOCAL:      'http://localhost:8000'
+        // PRODUCTION: 'https://your-backend.up.railway.app'  ← update after Railway deploy
+        const API_BASE_URL = 'http://localhost:8000';
+
+const IMG = 'hero.png';
+        const PW = 780, PH = 970;
+
+        // ── State machine: 'float' | 'expanded' | 'zoomed' ───────────────────────────
+        let state = 'float';
+        let curPage = 0;
+        let floatT = 0;
+        let textures = []; // Array of CanvasTextures for each page
+
+        // ── Three.js core ────────────────────────────────────────────────────────────
+        let scene, camera, renderer, newsMesh, newsGroup;
+        const clock = new THREE.Clock();
+
+        // ── Shaders ──────────────────────────────────────────────────────────────────
+        const vertexShader = `
+            varying vec2 vUv;
+            uniform float uTime;
+            uniform float uWaveIntensity;
+            uniform float uCurl;
+            
+            void main() {
+                vUv = uv;
+                vec3 pos = position;
+                
+                // Flag Ripple (Always present)
+                float w = sin(pos.x * 0.01 + uTime * 2.0) * 8.0 * uWaveIntensity;
+                
+                // --- CYLINDRICAL CURL ---
+                float radius = 110.0;
+                // Move the cylinder from PW/2 to -PW/2
+                // PW is 780, so -390 to 390
+                float curlX = 400.0 - (uCurl * 800.0);
+                
+                float relX = pos.x - curlX;
+                
+                if (relX > 0.0) {
+                    float angle = relX / radius;
+                    pos.x = curlX + sin(angle) * radius;
+                    pos.z = w + (radius - cos(angle) * radius);
+                } else {
+                    pos.z += w;
+                }
+                
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+        `;
+
+        const fragmentShader = `
+            varying vec2 vUv;
+            uniform sampler2D uMap;
+            
+            void main() {
+                vec4 tex = texture2D(uMap, vUv);
+                // Subtle vintage grain/dust can be added here
+                gl_FragColor = tex;
+            }
+        `;
+
+        // ── Elements ─────────────────────────────────────────────────────────────────
+        const vp = document.getElementById('vp');
+        const vig = document.getElementById('vig');
+        const zb = document.getElementById('zb');
+        const mb = document.getElementById('mb');
+        const dotsEl = document.getElementById('dots');
+        const cn = document.getElementById('cn');
+        const cp = document.getElementById('cp');
+        const hint = document.getElementById('hint');
+
+        // ── Scene Setup ─────────────────────────────────────────────────────────────
+        function initScene() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
+            camera.position.z = 1200;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            vp.appendChild(renderer.domElement);
+
+            newsGroup = new THREE.Group();
+            scene.add(newsGroup);
+
+            // Large Plane for the newspaper
+            const geometry = new THREE.PlaneGeometry(PW, PH, 64, 64);
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uMap: { value: null },
+                    uWaveIntensity: { value: 1.0 },
+                    uCurl: { value: 0.0 }
+                },
+                vertexShader,
+                fragmentShader,
+                side: THREE.DoubleSide,
+                transparent: true
+            });
+
+            newsMesh = new THREE.Mesh(geometry, material);
+            newsGroup.add(newsMesh);
+
+            // Lighting (for the depth shading later)
+            const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambient);
+        }
+
+        // ── Render HTML to Textures ─────────────────────────────────────────────────
+        async function buildTextures() {
+            const container = document.createElement('div');
+            container.style.cssText = `position:fixed; left:-9999px; top:-9999px; width:${PW}px; height:${PH}px;`;
+            document.body.appendChild(container);
+
+            for (let i = 0; i < SPREADS.length; i++) {
+                container.innerHTML = `<div class="page">${SPREADS[i].page(IMG)}</div>`;
+                const canvas = await html2canvas(container, {
+                    width: PW,
+                    height: PH,
+                    scale: 2, // High DPI textures
+                    backgroundColor: null
+                });
+                const texture = new THREE.CanvasTexture(canvas);
+                texture.minFilter = THREE.LinearFilter;
+                textures.push(texture);
+
+                // Add pagination dot
+                const d = document.createElement('div');
+                d.className = 'dot' + (i === 0 ? ' on' : '');
+                d.onclick = () => { if (state !== 'zoomed') goTo(i); };
+                dotsEl.appendChild(d);
+            }
+            document.body.removeChild(container);
+
+            // Set initial texture
+            newsMesh.material.uniforms.uMap.value = textures[0];
+            
+            // Interaction Layer implementation
+            createInteractionLayer();
+        }
+
+        function createInteractionLayer() {
+            const stage = document.createElement('div');
+            stage.id = 'stage';
+            stage.style.cssText = `position:fixed; left:0; top:0; width:${PW}px; height:${PH}px; pointer-events:none;`;
+            vp.appendChild(stage);
+
+            SPREADS.forEach((s, i) => {
+                const div = document.createElement('div');
+                div.className = 'spread' + (i === 0 ? ' active' : '');
+                div.id = `sp-${i}`;
+                div.style.cssText = `position:absolute; inset:0; opacity:0; pointer-events:none;`;
+                
+                const interact = document.createElement('div');
+                interact.className = 'interact';
+                interact.innerHTML = `<div class="page">${s.page(IMG)}</div>`;
+                div.appendChild(interact);
+                stage.appendChild(div);
+            });
+        }
+
+        // ── Animation Loop ──────────────────────────────────────────────────────────
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            const time = clock.getElapsedTime();
+            TWEEN.update();
+
+            // Wave intensity adjustment based on state
+            let targetIntensity = (state === 'float') ? 1.0 : (state === 'zoomed' ? 0.1 : 0.4);
+            newsMesh.material.uniforms.uWaveIntensity.value = THREE.MathUtils.lerp(
+                newsMesh.material.uniforms.uWaveIntensity.value, targetIntensity, 0.05
+            );
+            newsMesh.material.uniforms.uTime.value = time;
+
+            if (state === 'float') {
+                floatT += 0.01;
+                newsGroup.rotation.x = Math.sin(floatT * 0.9) * 0.03;
+                newsGroup.rotation.y = Math.cos(floatT * 0.65) * 0.02;
+                newsGroup.position.y = Math.sin(floatT * 1.15) * 15;
+            }
+
+            renderer.render(scene, camera);
+            updateInteractionTransform();
+        }
+
+        function updateInteractionTransform() {
+            // This synchronizes the invisible DOM layer with the WebGL mesh for hovers
+            const stage = document.getElementById('stage');
+            if (!stage) return;
+            
+            const vector = new THREE.Vector3();
+            newsMesh.getWorldPosition(vector);
+            vector.project(camera);
+
+            const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const y = (-(vector.y * 0.5) + 0.5) * window.innerHeight;
+
+            const scale = newsMesh.scale.x;
+            stage.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px) scale(${scale})`;
+            stage.style.pointerEvents = (state === 'float' || state === 'expanded') ? 'auto' : 'none';
+        }
+
+        // ── Page Turn & Transitions ──────────────────────────────────────────────────
+        function goTo(target) {
+            if (target < 0 || target >= textures.length || target === curPage) return;
+            
+            const forward = target > curPage;
+            
+            // Soft Page Turn logic
+            if (forward) {
+                // Roll forward: 0 -> 1
+                new TWEEN.Tween(newsMesh.material.uniforms.uCurl)
+                    .to({ value: 1.0 }, 1000)
+                    .easing(TWEEN.Easing.Quartic.InOut)
+                    .onStart(() => {
+                        // Lift group slightly
+                        new TWEEN.Tween(newsGroup.rotation).to({ z: -0.05 }, 500).yoyo(true).repeat(1).start();
+                    })
+                    .onUpdate(() => {
+                        if (newsMesh.material.uniforms.uCurl.value >= 0.5 && curPage !== target) {
+                            curPage = target;
+                            newsMesh.material.uniforms.uMap.value = textures[target];
+                            updateDots(target);
+                            document.querySelectorAll('.spread').forEach((s, idx) => {
+                                s.classList.toggle('active', idx === target);
+                            });
+                        }
+                    })
+                    .onComplete(() => {
+                        newsMesh.material.uniforms.uCurl.value = 0.0;
+                    })
+                    .start();
+            } else {
+                // Roll backward: 1 -> 0
+                newsMesh.material.uniforms.uCurl.value = 1.0;
+                // Swap immediately to target then roll in
+                curPage = target;
+                newsMesh.material.uniforms.uMap.value = textures[target];
+                updateDots(target);
+                document.querySelectorAll('.spread').forEach((s, idx) => {
+                    s.classList.toggle('active', idx === target);
+                });
+
+                new TWEEN.Tween(newsMesh.material.uniforms.uCurl)
+                    .to({ value: 0.0 }, 1000)
+                    .easing(TWEEN.Easing.Quartic.InOut)
+                    .onStart(() => {
+                        new TWEEN.Tween(newsGroup.rotation).to({ z: 0.05 }, 500).yoyo(true).repeat(1).start();
+                    })
+                    .start();
+            }
+        }
+
+        function expandPage() {
+            if (state !== 'float') return;
+            state = 'expanded';
+            
+            new TWEEN.Tween(newsGroup.rotation).to({ x:0, y:0 }, 800).start();
+            new TWEEN.Tween(newsGroup.position).to({ y:0 }, 800).start();
+            new TWEEN.Tween(newsMesh.scale).to({ x:1.1, y:1.1 }, 1000).easing(TWEEN.Easing.Exponential.Out).start();
+
+            document.body.classList.replace('float-mode', 'expanded-mode');
+            mb.style.display = 'block';
+            hint.style.opacity = '0';
+            updateNav();
+        }
+
+        function collapseToFloat() {
+            if (state === 'float') return;
+            state = 'float';
+            
+            new TWEEN.Tween(newsMesh.scale).to({ x:1.0, y:1.0 }, 1000).easing(TWEEN.Easing.Exponential.Out).start();
+            document.body.classList.replace('expanded-mode', 'float-mode');
+            mb.style.display = 'none';
+            cn.style.display = cp.style.display = 'none';
+        }
+
+        function zoomTo(el) {
+            if (state !== 'expanded') return;
+            state = 'zoomed';
+
+            const rect = el.getBoundingClientRect();
+            // Calculate zoom based on article position
+            // In Three.js we just move the camera closer or move the mesh
+            new TWEEN.Tween(camera.position).to({ z: 600 }, 1500).easing(TWEEN.Easing.Cubic.Out).start();
+            
+            vig.classList.add('on');
+            zb.style.display = 'block';
+            mb.style.display = 'none';
+        }
+
+        function zoomOut() {
+            if (state !== 'zoomed') return;
+            state = 'expanded';
+            new TWEEN.Tween(camera.position).to({ z: 1200 }, 1200).easing(TWEEN.Easing.Cubic.Out).start();
+            vig.classList.remove('on');
+            zb.style.display = 'none';
+            mb.style.display = 'block';
+            updateNav();
+        }
+
+        function updateNav() {
+            const showNav = (state === 'expanded');
+            cn.style.display = (showNav && curPage < SPREADS.length - 1) ? 'block' : 'none';
+            cp.style.display = (showNav && curPage > 0) ? 'block' : 'none';
+        }
+
+        function updateDots(i) {
+            document.querySelectorAll('.dot').forEach((d, j) => d.classList.toggle('on', j === i));
+        }
+
+        function showHint(msg) {
+            hint.textContent = msg;
+            hint.style.opacity = '1';
+            clearTimeout(hint._t);
+            hint._t = setTimeout(() => { hint.style.opacity = '0'; }, 4000);
+        }
+
+        // ── Events ──────────────────────────────────────────────────────────────────
+        cn.addEventListener('click', () => goTo(curPage + 1));
+        cp.addEventListener('click', () => goTo(curPage - 1));
+        zb.addEventListener('click', zoomOut);
+        mb.addEventListener('click', collapseToFloat);
+
+        document.addEventListener('click', e => {
+            if (e.target.closest('#zb,#mb,#cn,#cp,#dots')) return;
+            if (state === 'float') {
+                 if (e.target.closest('.interact') || e.target.tagName === 'CANVAS') expandPage();
+            } else if (state === 'expanded') {
+                const az = e.target.closest('.az');
+                if (az) zoomTo(az);
+                else if (e.target.tagName === 'CANVAS' || !e.target.closest('.interact')) collapseToFloat();
+            } else if (state === 'zoomed') {
+                zoomOut();
+            }
+        });
+
+        // ── Init ────────────────────────────────────────────────────────────────────
+        async function initApp() {
+            initScene();
+            
+            try {
+                const res = await fetch(`${API_BASE_URL}/articles?limit=40`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data)) setArticles(data);
+                }
+            } catch (e) {
+                console.warn("[Backend] Offline. Using placeholders.");
+            }
+
+            await buildTextures();
+            animate();
+            
+            document.body.classList.add('float-mode');
+            setTimeout(() => showHint('Click the newspaper to open it'), 2000);
+
+            // Gesture Control Integration
+            GestureControl.init({
+                onFist: () => {
+                    if (state === 'float') expandPage();
+                    else if (state === 'expanded') {
+                        const az = document.querySelector('.spread.active .az');
+                        if (az) zoomTo(az);
+                    }
+                },
+                onOpenHand: () => {
+                    if (state === 'zoomed') zoomOut();
+                    else if (state === 'expanded') collapseToFloat();
+                },
+                onSwishRight: () => { if (state === 'expanded') goTo(curPage + 1); },
+                onSwishLeft: () => { if (state === 'expanded') goTo(curPage - 1); }
+            });
+        }
+
+        initApp();
+    </script>
+</body>
+
+</html>

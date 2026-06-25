@@ -2,13 +2,13 @@
 
 The World Dispatch is an AI-powered, fully autonomous digital newspaper. It fetches the latest global news, processes it through a sophisticated RAG (Retrieval-Augmented Generation) pipeline using Llama-3, and presents it in an immersive, interactive 3D newspaper interface.
 
-![The World Dispatch Front Page](assets/front_page.png)
+
 
 ## 🎥 Demo
 
 Watch the newspaper in action, featuring realistic page-turning physics and dynamic content loading:
 
-![Demo Video](assets/demo.webp)
+
 
 *Note: The demo video above is an animated WebP showing the 3D page-turning interactions.*
 

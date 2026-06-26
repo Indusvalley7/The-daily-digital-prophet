@@ -5,15 +5,6 @@ The World Dispatch is an AI-powered, fully autonomous digital newspaper. It fetc
 <img width="2928" height="1568" alt="image" src="https://github.com/user-attachments/assets/6f134641-2224-42bb-b7b9-dd4d6fc9d4a9" />
 
 
-## 🎥 Demo
-
-Watch the newspaper in action, featuring realistic page-turning physics and dynamic content loading:
-
-<img width="1264" height="1564" alt="image" src="https://github.com/user-attachments/assets/287c728b-2f3e-412f-bea8-b558fc02c290" />
-
-
-*Note: The demo video above is an animated WebP showing the 3D page-turning interactions.*
-
 ## 🌟 Features
 
 - **Interactive 3D Interface**: Built with Three.js, experience reading the news as if holding a physical newspaper with real-time page-turning gestures.
